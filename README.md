@@ -81,8 +81,6 @@
 Sudoku solver
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
----TEST---
-
 ### About the Client (IA A01 Client Scenario)
 
 Put some basic info about your client and their needs. You don't need to dox them, but provide the context for your project
