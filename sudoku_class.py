@@ -1,18 +1,37 @@
 class SudokuBoard:
-    # Simple 9x9 Sudoku board
-    # Uses 0 for empty cells
+    # Uses 0 for empty
 
     def __init__(self, grid=None):
+        self.grid = []
+        self.load(grid)
+
+    def load(self, grid=None):
+        # If no grid provided: make a blank board
         if grid is None:
             self.grid = []
             for _ in range(9):
                 self.grid.append([0] * 9)
-        else:
-            self.grid = grid  # assume it's a valid 9x9 list of lists
+            return
+
+        # Basic validation (kept simple for IA)
+        if len(grid) != 9:
+            raise ValueError("Grid must have 9 rows.")
+
+        for row in grid:
+            if len(row) != 9:
+                raise ValueError("Each row must have 9 columns.")
+            for v in row:
+                if type(v) != int or v < 0 or v > 9:
+                    raise ValueError("Each cell must be an int from 0 to 9.")
+
+        # Copy to avoid accidental external edits
+        self.grid = []
+        for row in grid:
+            self.grid.append(row[:])
 
     # ---------- Easy access ----------
     def row(self, r):
-        return self.grid[r]  # returns the actual row list
+        return self.grid[r]
 
     def col(self, c):
         column = []
@@ -21,11 +40,6 @@ class SudokuBoard:
         return column
 
     def box(self, box_r, box_c):
-        """
-        box_r and box_c are 0..2
-        (0,0) = top-left box, (2,2) = bottom-right box
-        Returns a list of 9 values.
-        """
         start_r = box_r * 3
         start_c = box_c * 3
         values = []
@@ -35,47 +49,41 @@ class SudokuBoard:
         return values
 
     def box_by_cell(self, r, c):
-        """Get the 3x3 box that contains (r, c)."""
         return self.box(r // 3, c // 3)
 
-    # ---------- Easy editing ----------
+    # ---------- Editing ----------
     def set(self, r, c, value):
-        # value should be 0..9 (0 means empty)
         self.grid[r][c] = value
 
     def clear(self, r, c):
         self.grid[r][c] = 0
 
-    # ---------- Easy to read printing ----------
+    # ---------- Printing ----------
     def print_board(self):
         for r in range(9):
             line = ""
             for c in range(9):
                 v = self.grid[r][c]
-                if v == 0:
-                    line += ". "
-                else:
-                    line += str(v) + " "
-
+                line += (". " if v == 0 else str(v) + " ")
                 if c == 2 or c == 5:
                     line += "| "
-
             print(line.strip())
-
             if r == 2 or r == 5:
                 print("-" * 21)
 
+detected_grid = [
+    [5, 3, 0, 0, 7, 0, 0, 0, 0],
+    [6, 0, 0, 1, 9, 5, 0, 0, 0],
+    [0, 9, 8, 0, 0, 0, 0, 6, 0],
 
-# ---- Example usage ----
-if __name__ == "__main__":
-    b = SudokuBoard()
-    b.set(0, 0, 5)
-    b.set(0, 1, 3)
-    b.set(0, 4, 7)
+    [8, 0, 0, 0, 6, 0, 0, 0, 3],
+    [4, 0, 0, 8, 0, 3, 0, 0, 1],
+    [7, 0, 0, 0, 2, 0, 0, 0, 6],
 
-    b.print_board()
+    [0, 6, 0, 0, 0, 0, 2, 8, 0],
+    [0, 0, 0, 4, 1, 9, 0, 0, 5],
+    [0, 0, 0, 0, 8, 0, 0, 7, 9]
+]
 
-    print("Row 0:", b.row(0))
-    print("Col 0:", b.col(0))
-    print("Box (0,0):", b.box(0, 0))
-    print("Box containing (0,4):", b.box_by_cell(0, 4))
+board = SudokuBoard(detected_grid)
+board.print_board()
