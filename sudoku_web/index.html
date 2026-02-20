@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sudoku Solver</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <div class="outer-card">
+      <div class="title">Sudoku Solver</div>
+
+      <div class="content">
+        <div class="board-area">
+          <div class="board-wrap">
+            <div id="board" class="board" aria-label="Sudoku board"></div>
+          </div>
+        </div>
+
+        <div class="side">
+          <div class="explain" aria-live="polite">
+            <p id="line1">Import a grid to begin</p>
+            <p id="line2">Preview it on the left</p>
+            <p id="line3">Then click Analyze to get a hint</p>
+          </div>
+
+          <div class="buttons">
+            <button id="btnImport" class="btn btn-ghost">Import New Grid</button>
+            <button id="btnAnalyze" class="btn btn-primary">Analyze / Get Hint</button>
+            <button id="btnReveal" class="btn btn-ghost">Reveal Solution</button>
+          </div>
+
+          <div class="status" id="status"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Import Modal -->
+  <div id="modal" class="modal" aria-hidden="true">
+    <div class="backdrop" data-close="1"></div>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-label="Import grid">
+      <div class="modal-head">
+        <div class="modal-title">Import Sudoku Grid</div>
+        <button class="xbtn" data-close="1" aria-label="Close">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="hint">
+          Paste 81 chars each. Use <span class="mono">0</span> or <span class="mono">.</span> for blanks.
+        </div>
+
+        <div class="fields">
+          <div class="field">
+            <label for="givensBox">Givens</label>
+            <textarea id="givensBox" spellcheck="false" class="textbox"></textarea>
+          </div>
+
+          <div class="field">
+            <label for="currentBox">User inputs (optional)</label>
+            <textarea id="currentBox" spellcheck="false" class="textbox"></textarea>
+            <div class="field-note">Leave empty to start from givens.</div>
+          </div>
+        </div>
+
+        <div class="row">
+          <button id="btnExample" class="btn btn-ghost small">Load Example</button>
+          <div class="spacer"></div>
+          <button id="btnLoad" class="btn btn-primary small">Preview Board</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body> 
+</html>
