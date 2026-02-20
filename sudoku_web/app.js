@@ -208,11 +208,28 @@ function computeDuplicateCells(current81){
 
 function toExplainLines(resp){
   if (resp.error) return ["Error", resp.error, ""];
-  if (resp.validation && !resp.validation.ok){
-    return ["Validation failed", resp.validation.explanation, "Fix the red cells, then analyze again."];
+
+  // 1) Validation failures (tampering / duplicates)
+  if (resp.validation && resp.validation.ok === false){
+    return ["Validation failed", resp.validation.explanation || "Invalid board.", "Fix the highlighted cells, then analyze again."];
   }
+
+  // 2) Mistakes must override hint text
+  if (resp.mistakes && resp.mistakes.has_mistake && Array.isArray(resp.mistakes.items) && resp.mistakes.items.length){
+    const it = resp.mistakes.items[0];
+    const entered = it.entered ?? "?";
+    const expected = it.expected ?? "?";
+    const why = it.explanation || "This entry doesn’t break Sudoku rules yet, but it contradicts the unique solution from the original givens, so the puzzle cannot be completed correctly.";
+    return [
+      "Mistake detected",
+      `Cell (r${it.r}, c${it.c}) is inconsistent: entered ${entered}, but the correct value is ${expected}.`,
+      why
+    ];
+  }
+
+  // 3) Only then show hint or 'no hint'
   if (!resp.hint || !resp.hint.has_hint){
-    return ["No hint available", "None of the enabled techniques produce a step.", "Use Reveal Solution if needed."];
+    return ["No hint available", "None of the enabled techniques produce a step.", "Either enter more values, or use Reveal Solution."];
   }
 
   const tech = resp.hint.technique || "Hint";
@@ -225,7 +242,6 @@ function toExplainLines(resp){
     parts[1] || "Apply the step, then re-analyze."
   ];
 }
-
 function hasLoadedBoard(){
   // if givens are all 0, user hasn't imported anything meaningful
   return state.givens81 && state.givens81 !== "0".repeat(81);

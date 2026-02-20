@@ -1,10 +1,11 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional, Any
 
 from sudoku_engine.board import Board
 
 RC = Tuple[int, int]
+ReasonMap = Dict[RC, Dict[str, str]]  # (r,c) -> {"technique": "...", "explanation": "..."}
 
 
 @dataclass(frozen=True)
@@ -76,7 +77,7 @@ def generate_violation_report(givens_board: Board, user_board: Board) -> Violati
             violation_type="GIVEN_TAMPERING",
             conflict_cells=edited,
             explanation=(
-                "A given is a fixed clue and must never be changed by the user. "
+                "Given tampering detected: a given is a fixed clue and must never be changed.\n"
                 f"Edited given cells (1-indexed): {_cells_1_indexed(edited)}."
             )
         )
@@ -100,8 +101,9 @@ def generate_violation_report(givens_board: Board, user_board: Board) -> Violati
                     digit=d,
                     conflict_cells=cells,
                     explanation=(
-                        f"Digit {d} appears more than once in row {r+1} at "
-                        f"{_cells_1_indexed(cells)}. This violates the Sudoku row rule (each digit 1–9 once per row)."
+                        f"Row rule violation: digit {d} appears more than once in row {r+1}.\n"
+                        f"Conflict cells (1-indexed): {_cells_1_indexed(cells)}.\n"
+                        "Sudoku rule: each digit 1–9 may appear at most once per row."
                     )
                 )
 
@@ -122,8 +124,9 @@ def generate_violation_report(givens_board: Board, user_board: Board) -> Violati
                     digit=d,
                     conflict_cells=cells,
                     explanation=(
-                        f"Digit {d} appears more than once in column {c+1} at "
-                        f"{_cells_1_indexed(cells)}. This violates the Sudoku column rule (each digit 1–9 once per column)."
+                        f"Column rule violation: digit {d} appears more than once in column {c+1}.\n"
+                        f"Conflict cells (1-indexed): {_cells_1_indexed(cells)}.\n"
+                        "Sudoku rule: each digit 1–9 may appear at most once per column."
                     )
                 )
 
@@ -137,6 +140,7 @@ def generate_violation_report(givens_board: Board, user_board: Board) -> Violati
                     if v == 0:
                         continue
                     positions.setdefault(v, []).append((r, c))
+
             box_index = br * 3 + bc + 1
             for d, cells in positions.items():
                 if len(cells) > 1:
@@ -147,8 +151,9 @@ def generate_violation_report(givens_board: Board, user_board: Board) -> Violati
                         digit=d,
                         conflict_cells=cells,
                         explanation=(
-                            f"Digit {d} appears more than once in box {box_index} at "
-                            f"{_cells_1_indexed(cells)}. This violates the Sudoku box rule (each digit 1–9 once per 3×3 box)."
+                            f"Box rule violation: digit {d} appears more than once in box {box_index}.\n"
+                            f"Conflict cells (1-indexed): {_cells_1_indexed(cells)}.\n"
+                            "Sudoku rule: each digit 1–9 may appear at most once per 3×3 box."
                         )
                     )
 
@@ -159,10 +164,19 @@ def generate_violation_report(givens_board: Board, user_board: Board) -> Violati
     )
 
 
-def generate_mistake_report(user_board: Board, solution_grid: List[List[int]], reasons_map=None) -> MistakeReport:
+def generate_mistake_report(
+    user_board: Board,
+    solution_grid: List[List[int]],
+    reasons_map: Optional[ReasonMap] = None
+) -> MistakeReport:
     """
-    Mistake = non-given user entry differs from solved grid.
-    Explanation includes a logical 'proof' from the human-technique solver when available.
+    Mistake = a non-given cell where the user entered a digit that differs from the solved grid.
+
+    The explanation is NOT 'because solution says so'.
+    It is:
+      - the correct value is forced by Sudoku constraints derived from the givens
+      - we attach a proof from the human-technique solver when available (reasons_map)
+      - therefore the user's value blocks any valid completion
     """
     g = user_board.grid
     items: List[MistakeItem] = []
@@ -170,7 +184,7 @@ def generate_mistake_report(user_board: Board, solution_grid: List[List[int]], r
     for r in range(9):
         for c in range(9):
             if user_board.given_mask[r][c]:
-                continue
+                continue  # never accuse givens
             entered = g[r][c]
             if entered == 0:
                 continue
@@ -178,35 +192,38 @@ def generate_mistake_report(user_board: Board, solution_grid: List[List[int]], r
             if entered == expected:
                 continue
 
+            # context values (useful for explanation screenshots)
             row_vals = _values_in_cells(g, [(r, x) for x in range(9)])
             col_vals = _values_in_cells(g, [(x, c) for x in range(9)])
             box_i = _box_index(r, c)
             box_vals = _values_in_cells(g, _box_cells(box_i))
 
-            proof = None
+            # proof from solver, if recorded
+            proof_lines: List[str] = []
             if reasons_map is not None:
                 proof = reasons_map.get((r, c))
-
-            if proof:
-                tech = proof.get("technique", "Unknown technique")
-                proof_stmt = proof.get("explanation", "").strip()
-                explanation = (
-                    f"Logical reason this is a mistake:\n"
-                    f"- Your entry: {entered}\n"
-                    f"- Forced value: {expected}\n"
-                    f"- Proof technique: {tech}\n"
-                    f"- Proof statement: {proof_stmt}\n"
-                    f"- Consequence: Even if {entered} does not create a duplicate yet, it contradicts a forced deduction, "
-                    f"so the puzzle cannot be completed correctly."
-                )
+                if proof:
+                    proof_lines.append(f"Proof technique: {proof.get('technique', 'Unknown')}")
+                    proof_lines.append(f"Proof statement: {proof.get('explanation', '').strip()}")
+                else:
+                    proof_lines.append("Proof technique: (not recorded for this exact cell)")
+                    proof_lines.append(
+                        "Proof statement: The solver reaches this value via earlier eliminations; "
+                        "this cell becomes forced later in the deduction chain."
+                    )
             else:
-                explanation = (
-                    f"Logical reason this is a mistake:\n"
-                    f"- Your entry: {entered}\n"
-                    f"- Forced value: {expected}\n"
-                    f"- Proof: This cell becomes forced later in the deduction chain after eliminations.\n"
-                    f"- Consequence: Keeping {entered} blocks any valid completion consistent with the givens."
-                )
+                proof_lines.append("Proof technique: (not available)")
+                proof_lines.append("Proof statement: No reasons_map provided by solver.")
+
+            explanation = (
+                f"Logical reason this is a mistake:\n"
+                f"- Your entry: {entered}\n"
+                f"- Forced value: {expected}\n"
+                f"- Why forced: the puzzle deductions from the original givens require {expected} at (r{r+1}, c{c+1}).\n"
+                f"- {'; '.join(proof_lines)}\n"
+                f"- Consequence: Keeping {entered} does not necessarily break Sudoku rules immediately, "
+                f"but it makes the board inconsistent with the forced deduction chain, so the puzzle cannot be completed correctly."
+            )
 
             items.append(
                 MistakeItem(
@@ -231,10 +248,4 @@ def generate_mistake_report(user_board: Board, solution_grid: List[List[int]], r
         has_mistake=False,
         items=[],
         summary="No mistakes detected: all user entries match the forced deductions / solution."
-    )
-
-    return MistakeReport(
-        has_mistake=False,
-        items=[],
-        summary="No mistakes detected: all user entries match the solution."
     )
