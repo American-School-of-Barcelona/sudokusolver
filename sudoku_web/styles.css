@@ -79,9 +79,60 @@ body{
 .cell.thick-right{border-right:4px solid var(--grid)!important}
 .cell.thick-bottom{border-bottom:4px solid var(--grid)!important}
 
-/* Highlighting */
-.cell.box-yellow{background:var(--yellow)}
-.cell.hint-blue{background:var(--hintBlue)}
+/* ----------------------------
+   Layered highlighting system
+   ---------------------------- */
+
+/* Ensure cells can host overlays */
+.cell{
+  position: relative;
+  overflow: hidden;
+}
+
+/* Overlay layer (used for row/col highlighting so it doesn't fight box-yellow) */
+.cell::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background: transparent;
+  z-index: 0;
+  pointer-events:none;
+}
+
+/* Row/Column highlight overlay (Naked Singles) */
+.cell.rc-yellow::before{
+  background: rgba(255, 232, 120, 0.32);
+}
+
+/* Box highlight stays as the base background (stronger) */
+.cell.box-yellow{
+  background: rgba(247, 227, 155, 0.85);
+}
+
+/* Target cell highlight dominates everything (blue) */
+.cell.hint-blue{
+  background: rgba(169, 215, 255, 0.95);
+}
+
+/* If a cell is the target, remove yellow overlay so it stays clean blue */
+.cell.hint-blue::before{
+  background: transparent !important;
+}
+
+/* Keep digits above overlays */
+.cell input{
+  position: relative;
+  z-index: 1;
+}
+
+/* ----------------------------
+   Target emphasis (red outline)
+   ---------------------------- */
+.cell.hint-blue{
+  outline: 4px solid rgba(220, 40, 40, 0.95);
+  outline-offset: -4px; /* inside the cell */
+  box-shadow: inset 0 0 0 1px rgba(220, 40, 40, 0.55);
+}
 
 /* Optional: violations/mistakes */
 .cell.bad{background:rgba(255,80,80,0.18)}
@@ -173,19 +224,45 @@ body{
   color:#666;
 }
 
-/* Modal */
-.modal{position:fixed; inset:0; display:none}
-.modal.show{display:block}
-.backdrop{position:absolute; inset:0; background:rgba(0,0,0,0.18)}
-.modal-card{
-  position:relative;
-  width:min(980px, 94vw);
-  margin:68px auto 0;
-  background:#fff;
-  border:2px solid #111;
-  border-radius:18px;
-  overflow:hidden;
+/* --- MODAL: must sit above EVERYTHING and block clicks --- */
+.modal{
+  position: fixed;
+  inset: 0;
+  display: none;
+  z-index: 9999; /* critical */
 }
+
+.modal.show{
+  display: block;
+}
+
+.backdrop{
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.18);
+  z-index: 0;
+  pointer-events: auto; /* critical: backdrop catches clicks */
+}
+
+/* Centered modal card above backdrop */
+.modal-card{
+  position: relative;
+  z-index: 1;
+  width: min(980px, 94vw);
+  margin: 68px auto 0;
+  background: #fff;
+  border: 2px solid #111;
+  border-radius: 18px;
+  overflow: hidden;
+  pointer-events: auto; /* critical: modal catches clicks */
+}
+
+/* Optional: prevent selection behind modal on some browsers */
+body.modal-open{
+  overflow: hidden;
+}
+
+
 .modal-head{
   display:flex;
   align-items:center;

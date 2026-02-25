@@ -11,30 +11,281 @@
     <div class="outer-card">
       <div class="title">Sudoku Solver</div>
 
-      <div class="content">
-        <div class="board-area">
-          <div class="board-wrap">
-            <div id="board" class="board" aria-label="Sudoku board"></div>
-          </div>
-        </div>
-
-        <div class="side">
-          <div class="explain" aria-live="polite">
-            <p id="line1">Import a grid to begin</p>
-            <p id="line2">Preview it on the left</p>
-            <p id="line3">Then click Analyze to get a hint</p>
+      <div class="inner-panel">
+        <div class="content">
+          <div class="board-area">
+            <div class="board-wrap">
+              <div id="board" class="board" aria-label="Sudoku board"></div>
+            </div>
           </div>
 
-          <div class="buttons">
-            <button id="btnImport" class="btn btn-ghost">Import New Grid</button>
-            <button id="btnAnalyze" class="btn btn-primary">Analyze / Get Hint</button>
-            <button id="btnReveal" class="btn btn-ghost">Reveal Solution</button>
-          </div>
+          <div class="side">
+            <!-- NICE HINT CARD -->
+            <div class="hint-card" aria-live="polite">
+              <div id="line1" class="hint-title">Hidden Single (Row)</div>
 
-          <div class="status" id="status"></div>
+              <div class="hint-text" id="line2">
+                In row 2, digit 8 can only go in one place.
+              </div>
+
+              <div class="hint-text" id="line3">
+                All other empty cells in row 2 cannot take 8 due to column/box constraints.
+              </div>
+
+              <div class="hint-footer">
+                <div class="dots" aria-hidden="true">
+                  <span class="dot active"></span>
+                  <span class="dot"></span>
+                  <span class="dot"></span>
+                </div>
+
+                <button class="next-btn" disabled aria-label="Next hint">→</button>
+              </div>
+            </div>
+
+            <div class="buttons">
+              <button id="btnImport" class="btn btn-ghost">Import New Grid</button>
+              <button id="btnAnalyze" class="btn btn-primary">Analyze / Get Hint</button>
+              <button id="btnReveal" class="btn btn-ghost">Reveal Solution</button>
+            </div>
+
+            <div class="status" id="status">Done.</div>
+          </div>
         </div>
       </div>
     </div>
+            In row 2, digit 8 can only go in one place.
+          </div>
+
+          <div class="hint-text" id="line3">
+            All other empty cells in row 2 cannot take 8 due to column/box constraints.
+          </div>
+
+          <div class="hint-footer">
+            <div class="dots" aria-hidden="true">
+              <span class="dot active"></span>
+              <span class="dot"></span>
+              <span class="dot"></span>
+            </div>
+
+            <button class="next-btn" disabled aria-label="Next hint">→</button>
+          </div>
+        </div>
+
+        <div class="buttons">
+          <button id="btnImport" class="btn btn-ghost">Import New Grid</button>
+          <button id="btnAnalyze" class="btn btn-primary">Analyze / Get Hint</button>
+          <button id="btnReveal" class="btn btn-ghost">Reveal Solution</button>
+        </div>
+
+        <div class="status" id="status">Done.</div>
+      </div>
+    </div>
+  </div>
+</div>
+            In row 2, digit 8 can only go in one place.
+          </div>
+
+          <div class="hint-text" id="line3">
+            All other empty cells in row 2 cannot take 8 due to column/box constraints.
+          </div>
+
+          <div class="hint-footer">
+            <div class="dots" aria-hidden="true">
+              <span class="dot active"></span>
+              <span class="dot"></span>
+              <span class="dot"></span>
+            </div>
+
+            <button class="next-btn" disabled aria-label="Next hint">→</button>
+          </div>
+        </div>
+
+        <div class="buttons">
+          <button id="btnImport" class="btn btn-ghost">Import New Grid</button>
+          <button id="btnAnalyze" class="btn btn-primary">Analyze / Get Hint</button>
+          <button id="btnReveal" class="btn btn-ghost">Reveal Solution</button>
+        </div>
+
+        <div class="status" id="status">Done.</div>
+      </div>
+    </div>
+  </div>
+</div>
+            In row 2, digit 8 can only go in one place.
+          </div>
+
+          <div class="hint-text" id="line3">
+            All other empty cells in row 2 cannot take 8 due to column/box constraints.
+          </div>
+
+          <div class="hint-footer">
+            <div class="dots" aria-hidden="true">
+              <span class="dot active"></span>
+              <span class="dot"></span>
+              <span class="dot"></span>
+            </div>
+
+            <button class="next-btn" disabled aria-label="Next hint">→</button>
+          </div>
+        </div>
+
+        <div class="buttons">
+          <button id="btnImport" class="btn btn-ghost">Import New Grid</button>
+          <button id="btnAnalyze" class="btn btn-primary">Analyze / Get Hint</button>
+          <button id="btnReveal" class="btn btn-ghost">Reveal Solution</button>
+        </div>
+
+        <div class="status" id="status">Done.</div>
+      </div>
+    </div>
+  </div>
+</div>
+            In row 2, digit 8 can only go in one place.
+          </div>
+
+          <div class="hint-text" id="line3">
+            All other empty cells in row 2 cannot take 8 due to column/box constraints.
+          </div>
+
+          <div class="hint-footer">
+            <div class="dots" aria-hidden="true">
+              <span class="dot active"></span>
+              <span class="dot"></span>
+              <span class="dot"></span>
+            </div>
+
+            <button class="next-btn" disabled aria-label="Next hint">→</button>
+          </div>
+        </div>
+
+        <div class="buttons">
+          <button id="btnImport" class="btn btn-ghost">Import New Grid</button>
+          <button id="btnAnalyze" class="btn btn-primary">Analyze / Get Hint</button>
+          <button id="btnReveal" class="btn btn-ghost">Reveal Solution</button>
+        </div>
+
+        <div class="status" id="status">Done.</div>
+      </div>
+    </div>
+  </div>
+</div>
+            In row 2, digit 8 can only go in one place.
+          </div>
+
+          <div class="hint-text" id="line3">
+            All other empty cells in row 2 cannot take 8 due to column/box constraints.
+          </div>
+
+          <div class="hint-footer">
+            <div class="dots" aria-hidden="true">
+              <span class="dot active"></span>
+              <span class="dot"></span>
+              <span class="dot"></span>
+            </div>
+
+            <button class="next-btn" disabled aria-label="Next hint">→</button>
+          </div>
+        </div>
+
+        <div class="buttons">
+          <button id="btnImport" class="btn btn-ghost">Import New Grid</button>
+          <button id="btnAnalyze" class="btn btn-primary">Analyze / Get Hint</button>
+          <button id="btnReveal" class="btn btn-ghost">Reveal Solution</button>
+        </div>
+
+        <div class="status" id="status">Done.</div>
+      </div>
+    </div>
+  </div>
+</div>
+            In row 2, digit 8 can only go in one place.
+          </div>
+
+          <div class="hint-text" id="line3">
+            All other empty cells in row 2 cannot take 8 due to column/box constraints.
+          </div>
+
+          <div class="hint-footer">
+            <div class="dots" aria-hidden="true">
+              <span class="dot active"></span>
+              <span class="dot"></span>
+              <span class="dot"></span>
+            </div>
+
+            <button class="next-btn" disabled aria-label="Next hint">→</button>
+          </div>
+        </div>
+
+        <div class="buttons">
+          <button id="btnImport" class="btn btn-ghost">Import New Grid</button>
+          <button id="btnAnalyze" class="btn btn-primary">Analyze / Get Hint</button>
+          <button id="btnReveal" class="btn btn-ghost">Reveal Solution</button>
+        </div>
+
+        <div class="status" id="status">Done.</div>
+      </div>
+    </div>
+  </div>
+</div>
+            In row 2, digit 8 can only go in one place.
+          </div>
+
+          <div class="hint-text" id="line3">
+            All other empty cells in row 2 cannot take 8 due to column/box constraints.
+          </div>
+
+          <div class="hint-footer">
+            <div class="dots" aria-hidden="true">
+              <span class="dot active"></span>
+              <span class="dot"></span>
+              <span class="dot"></span>
+            </div>
+
+            <button class="next-btn" disabled aria-label="Next hint">→</button>
+          </div>
+        </div>
+
+        <div class="buttons">
+          <button id="btnImport" class="btn btn-ghost">Import New Grid</button>
+          <button id="btnAnalyze" class="btn btn-primary">Analyze / Get Hint</button>
+          <button id="btnReveal" class="btn btn-ghost">Reveal Solution</button>
+        </div>
+
+        <div class="status" id="status">Done.</div>
+      </div>
+    </div>
+  </div>
+</div>
+            In row 2, digit 8 can only go in one place.
+          </div>
+
+          <div class="hint-text" id="line3">
+            All other empty cells in row 2 cannot take 8 due to column/box constraints.
+          </div>
+
+          <div class="hint-footer">
+            <div class="dots" aria-hidden="true">
+              <span class="dot active"></span>
+              <span class="dot"></span>
+              <span class="dot"></span>
+            </div>
+
+            <button class="next-btn" disabled aria-label="Next hint">→</button>
+          </div>
+        </div>
+
+        <div class="buttons">
+          <button id="btnImport" class="btn btn-ghost">Import New Grid</button>
+          <button id="btnAnalyze" class="btn btn-primary">Analyze / Get Hint</button>
+          <button id="btnReveal" class="btn btn-ghost">Reveal Solution</button>
+        </div>
+
+        <div class="status" id="status">Done.</div>
+      </div>
+    </div>
+  </div>
+</div>
   </main>
 
   <!-- Import Modal -->

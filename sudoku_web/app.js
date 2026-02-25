@@ -25,6 +25,7 @@ let state = {
   highlightCell: null,
   badCells: new Set(),
   badOutline: new Set(),
+  highlightScope: "box", // "box" or "rowcolbox"
 };
 
 const EXAMPLE = {
@@ -68,9 +69,20 @@ function renderBoard(){
 
     // hint highlight
     if (state.highlightCell){
-      const b = boxOf(state.highlightCell.r, state.highlightCell.c);
+      const hr = state.highlightCell.r;
+      const hc = state.highlightCell.c;
+
+      // Always highlight the 3×3 box (yellow)
+      const b = boxOf(hr, hc);
       if (r>=b.br && r<b.br+3 && c>=b.bc && c<b.bc+3) cell.classList.add("box-yellow");
-      if (r===state.highlightCell.r && c===state.highlightCell.c) cell.classList.add("hint-blue");
+
+      // For Naked Singles: also highlight row + column (yellow tint)
+      if (state.highlightScope === "rowcolbox"){
+        if (r === hr || c === hc) cell.classList.add("rc-yellow");
+      }
+
+      // Target cell (blue)
+      if (r===hr && c===hc) cell.classList.add("hint-blue");
     }
 
     // error highlight
@@ -103,8 +115,16 @@ function renderBoard(){
   }
 }
 
-function openModal(){ modal.classList.add("show"); modal.setAttribute("aria-hidden","false"); }
-function closeModal(){ modal.classList.remove("show"); modal.setAttribute("aria-hidden","true"); }
+function openModal(){
+  modal.classList.add("show");
+  modal.setAttribute("aria-hidden","false");
+  document.body.classList.add("modal-open");
+}
+function closeModal(){
+  modal.classList.remove("show");
+  modal.setAttribute("aria-hidden","true");
+  document.body.classList.remove("modal-open");
+}
 
 modal.addEventListener("click", (e) => {
   if (e.target?.dataset?.close === "1") closeModal();
@@ -279,6 +299,9 @@ btnAnalyze.addEventListener("click", async () => {
       state.badOutline.add(indexRC(it0.r-1, it0.c-1));
     } else {
       state.highlightCell = extractHintCell(resp);
+
+      const tech = (resp?.hint?.technique || "").toLowerCase();
+      state.highlightScope = tech.includes("naked single") ? "rowcolbox" : "box";
     }
 
     const [a,b,c] = toExplainLines(resp);
