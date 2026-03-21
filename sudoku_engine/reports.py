@@ -216,13 +216,9 @@ def generate_mistake_report(
                 proof_lines.append("Proof statement: No reasons_map provided by solver.")
 
             explanation = (
-                f"Logical reason this is a mistake:\n"
-                f"- Your entry: {entered}\n"
-                f"- Forced value: {expected}\n"
-                f"- Why forced: the puzzle deductions from the original givens require {expected} at (r{r+1}, c{c+1}).\n"
-                f"- {'; '.join(proof_lines)}\n"
-                f"- Consequence: Keeping {entered} does not necessarily break Sudoku rules immediately, "
-                f"but it makes the board inconsistent with the forced deduction chain, so the puzzle cannot be completed correctly."
+                f"You entered {entered} in (r{r+1}, c{c+1}), but this cell must be {expected}. "
+                f"It may not cause an immediate row, column, or box conflict, but the puzzle’s logic already forces {expected} here. "
+                f"Keeping {entered} blocks the correct solution."
             )
 
             items.append(

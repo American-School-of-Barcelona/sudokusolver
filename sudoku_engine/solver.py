@@ -49,6 +49,76 @@ def solve_from_givens_only_with_reasons(board: Board) -> tuple[SolutionResult, R
 
     return SolutionResult(True, b.grid), reasons
 
+def _legal_digits(grid: List[List[int]], r: int, c: int) -> List[int]:
+    if grid[r][c] != 0:
+        return []
+
+    used = set(grid[r])
+    used |= {grid[rr][c] for rr in range(9)}
+
+    br = (r // 3) * 3
+    bc = (c // 3) * 3
+    used |= {
+        grid[rr][cc]
+        for rr in range(br, br + 3)
+        for cc in range(bc, bc + 3)
+    }
+
+    used.discard(0)
+    return [d for d in range(1, 10) if d not in used]
+
+
+def solve_exact_from_givens(board: Board, max_solutions: int = 2) -> tuple[int, Optional[List[List[int]]]]:
+    """
+    Exact backtracking solver used only for:
+    - checking whether the puzzle has 0 / 1 / multiple solutions
+    - recovering the unique solution when the human-technique solver gets stuck
+    """
+    grid = [
+        [board.grid[r][c] if board.given_mask[r][c] else 0 for c in range(9)]
+        for r in range(9)
+    ]
+
+    first_solution: Optional[List[List[int]]] = None
+    count = 0
+
+    def search():
+        nonlocal count, first_solution
+
+        if count >= max_solutions:
+            return
+
+        best_rc = None
+        best_cands = None
+
+        for r in range(9):
+            for c in range(9):
+                if grid[r][c] == 0:
+                    cands = _legal_digits(grid, r, c)
+                    if not cands:
+                        return
+                    if best_cands is None or len(cands) < len(best_cands):
+                        best_rc = (r, c)
+                        best_cands = cands
+
+        if best_rc is None:
+            count += 1
+            if first_solution is None:
+                first_solution = [row[:] for row in grid]
+            return
+
+        r, c = best_rc
+        for d in best_cands:
+            grid[r][c] = d
+            search()
+            grid[r][c] = 0
+
+            if count >= max_solutions:
+                return
+
+    search()
+    return count, first_solution
+
 
 def solve_using_6_techniques(b: Board, reasons: Optional[ReasonMap]) -> bool:
     techniques = [
