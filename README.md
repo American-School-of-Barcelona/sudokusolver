@@ -151,7 +151,7 @@ The API runs on `http://127.0.0.1:8000` by default.
 - [x] OCR review modal
 - [x] Naked Single hints
 - [x] Hidden Single hints
-- [ ] Hidden Single visual highlighting (show excluded cells and blocker houses)
+- [x] Hidden Single visual highlighting (show excluded cells and blocker houses)
 - [ ] Pointing Pairs / Box-Line Reduction hints
 - [ ] Pencil marks (candidate tracking)
 
