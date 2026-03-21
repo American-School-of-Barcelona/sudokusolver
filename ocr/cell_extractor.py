@@ -4,9 +4,9 @@ from typing import List, Tuple
 
 import numpy as np
 
-GRID_SIZE  = 450
+GRID_SIZE  = 630   # must match TARGET_SIZE in grid_detector.py
 CELL_COUNT = 9
-MARGIN     = 5   # pixels trimmed from each edge to remove grid lines
+MARGIN     = 5     # pixels trimmed from each edge to remove grid lines
 
 
 def extract_cells(

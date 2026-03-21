@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Trained model (large binary — regenerate with: python -m ocr.train_classifier)
+ocr/digit_model.pkl
+
+# macOS
+.DS_Store
+
+# Editor / tool config
+.claude/

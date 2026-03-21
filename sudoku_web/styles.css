@@ -297,6 +297,15 @@ body{
   gap:14px;
 }
 
+.btn-row{
+  display:flex;
+  gap:14px;
+}
+
+.btn-row .btn{
+  flex:1;
+}
+
 .btn{
   height:62px;
   width:100%;
@@ -317,13 +326,14 @@ body{
 }
 
 .btn:hover{
-  transform:translateY(-1px);
-  box-shadow: 0 12px 28px rgba(18,24,38,0.11);
+  transform:translateY(-2px);
+  box-shadow: 0 14px 32px rgba(18,24,38,0.14);
   border-color:rgba(40,50,67,0.28);
 }
 
 .btn:active{
   transform:translateY(0);
+  box-shadow: var(--shadow-sm);
 }
 
 .btn-primary{
@@ -407,6 +417,12 @@ body.modal-open{
   background:#fff;
   font-size:16px;
   cursor:pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.xbtn:hover{
+  background:#f3f5f8;
+  border-color:rgba(40,50,67,0.22);
 }
 
 .modal-body{
@@ -478,6 +494,143 @@ body.modal-open{
 
 .mono{
   font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+/* ── OCR review modal ─────────────────────────────────────────────────────── */
+
+.ocr-modal-card {
+  width: min(1060px, 96vw);
+}
+
+.ocr-layout {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.ocr-image-side {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.ocr-preview-img {
+  width: 100%;
+  max-height: 430px;
+  object-fit: contain;
+  border-radius: 12px;
+  border: 1px solid rgba(40,50,67,0.12);
+  background: #f8f9fb;
+}
+
+.ocr-board-side {
+  flex: 0 0 auto;
+}
+
+.ocr-board {
+  display: grid;
+  grid-template-columns: repeat(9, 44px);
+  grid-template-rows: repeat(9, 44px);
+  border: 4px solid var(--grid);
+  background: #fff;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.ocr-cell {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--thin);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+}
+
+.ocr-cell.thick-top    { border-top:    3px solid var(--grid) !important; }
+.ocr-cell.thick-left   { border-left:   3px solid var(--grid) !important; }
+.ocr-cell.thick-right  { border-right:  3px solid var(--grid) !important; }
+.ocr-cell.thick-bottom { border-bottom: 3px solid var(--grid) !important; }
+
+.ocr-cell input {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  padding: 0;
+  text-align: center;
+  font-size: 22px;
+  line-height: 1;
+  font-family: "Avenir Next","SF Pro Display","Helvetica Neue",Arial,sans-serif;
+}
+
+/* Dark navy = fixed given */
+.ocr-cell.ocr-given {
+  background: #1e2d40;
+}
+
+.ocr-cell.ocr-given input {
+  color: #dce8ff;
+  -webkit-text-fill-color: #dce8ff;
+  font-weight: 820;
+}
+
+/* White = user entry */
+.ocr-cell.ocr-user input {
+  color: #2f6fe4;
+  -webkit-text-fill-color: #2f6fe4;
+  font-weight: 700;
+}
+
+/* Small corner badge — click to toggle given ↔ user */
+.ocr-toggle {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 3;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.88);
+  border: 1px solid rgba(40,50,67,0.18);
+  color: #364152;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 12px;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ocr-cell.ocr-given .ocr-toggle {
+  background: rgba(255,255,255,0.16);
+  border-color: rgba(255,255,255,0.28);
+  color: #dce8ff;
+}
+
+@media (max-width: 720px) {
+  .ocr-layout {
+    flex-direction: column;
+  }
+
+  .ocr-board {
+    grid-template-columns: repeat(9, min(9.5vw, 40px));
+    grid-template-rows:    repeat(9, min(9.5vw, 40px));
+  }
+
+  .ocr-cell {
+    width:  min(9.5vw, 40px);
+    height: min(9.5vw, 40px);
+  }
+
+  .ocr-cell input {
+    font-size: 18px;
+  }
 }
 
 @media (max-width: 1100px){

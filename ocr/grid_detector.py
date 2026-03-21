@@ -3,7 +3,10 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-TARGET_SIZE = 450
+# Larger warp size = more pixels per cell = better OCR accuracy.
+# 630 px → 70 px per cell (vs 50 px at 450), which gives Tesseract
+# substantially more detail, especially for thin digits like 1 and 7.
+TARGET_SIZE = 630
 
 
 def _order_points(pts: np.ndarray) -> np.ndarray:

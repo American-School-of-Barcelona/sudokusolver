@@ -23,6 +23,12 @@ const btnExample = document.getElementById("btnExample");
 const btnOCR     = document.getElementById("btnOCR");
 const ocrInput   = document.getElementById("ocrInput");
 
+const ocrModal      = document.getElementById("ocrModal");
+const ocrPreviewImg = document.getElementById("ocrPreviewImg");
+const ocrBoardEl    = document.getElementById("ocrBoard");
+const btnOcrCancel  = document.getElementById("btnOcrCancel");
+const btnOcrLoad    = document.getElementById("btnOcrLoad");
+
 // ─── Application state ────────────────────────────────────────────────────────
 // All mutable UI state lives here in one object, making it easy to reset and
 // to understand at a glance what the app is tracking at any point in time.
@@ -766,13 +772,110 @@ btnReveal.addEventListener("click", async () => {
 // ─── OCR import ───────────────────────────────────────────────────────────────
 
 /**
- * Load the board from a list of 81 OCR-classified cell objects.
- * Each object has {digit: int, isGiven: bool}.  Cells where isGiven=true and
- * digit>0 form the givens string; all non-zero digits form the current string.
+ * Working copy of the 81 cells shown in the OCR review modal.
+ * Each element is {digit: number (0 = empty), isGiven: boolean}.
+ * Populated by openOcrModal() and read by btnOcrLoad.
+ * @type {Array<{digit: number, isGiven: boolean}>}
  */
-function loadFromOCR(cells) {
-  const givens81  = cells.map(cell => cell.isGiven && cell.digit > 0 ? String(cell.digit) : "0").join("");
-  const current81 = cells.map(cell => cell.digit > 0 ? String(cell.digit) : "0").join("");
+let ocrReviewCells = [];
+
+/**
+ * Open the OCR review modal with the image and initial cell data from the server.
+ * The user can edit digits and toggle each cell's given/user classification before
+ * confirming, so mistakes in the automated OCR pass can be corrected manually.
+ *
+ * @param {string} imageUrl - object URL of the uploaded image for the preview panel
+ * @param {Array<{digit: number, isGiven: boolean}>} cells - 81-element OCR result
+ */
+function openOcrModal(imageUrl, cells) {
+  ocrReviewCells = cells.map(c => ({ digit: c.digit, isGiven: c.isGiven }));
+  ocrPreviewImg.src = imageUrl;
+  renderOcrBoard();
+
+  ocrModal.classList.add("show");
+  ocrModal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+}
+
+function closeOcrModal() {
+  ocrModal.classList.remove("show");
+  ocrModal.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("modal-open");
+
+  // Release the object URL to free memory.
+  if (ocrPreviewImg.src.startsWith("blob:")) {
+    URL.revokeObjectURL(ocrPreviewImg.src);
+  }
+  ocrPreviewImg.src = "";
+}
+
+/**
+ * Render (or re-render) the 9×9 board inside the OCR review modal.
+ * Each cell shows an editable input and a small "G/U" toggle badge.
+ * Clicking the badge switches a cell between given (dark) and user (blue).
+ */
+function renderOcrBoard() {
+  ocrBoardEl.innerHTML = "";
+
+  for (let i = 0; i < 81; i++) {
+    const r = Math.floor(i / 9);
+    const c = i % 9;
+    const cellData = ocrReviewCells[i];
+
+    const cell = document.createElement("div");
+    cell.className = "ocr-cell";
+
+    // Thick borders for 3×3 box boundaries (same logic as the main board).
+    if (r % 3 === 0) cell.classList.add("thick-top");
+    if (c % 3 === 0) cell.classList.add("thick-left");
+    if (r === 8)     cell.classList.add("thick-bottom");
+    if (c === 8)     cell.classList.add("thick-right");
+
+    cell.classList.add(cellData.isGiven ? "ocr-given" : "ocr-user");
+
+    // Editable digit input.
+    const input = document.createElement("input");
+    input.type      = "text";
+    input.inputMode = "numeric";
+    input.maxLength = 1;
+    input.value = cellData.digit > 0 ? String(cellData.digit) : "";
+
+    input.addEventListener("input", (e) => {
+      const val = (e.target.value || "").replace(/[^1-9]/g, "");
+      e.target.value = val;
+      ocrReviewCells[i].digit = val === "" ? 0 : parseInt(val, 10);
+    });
+
+    // Small corner badge — click to toggle between given and user entry.
+    const badge = document.createElement("div");
+    badge.className   = "ocr-toggle";
+    badge.textContent = cellData.isGiven ? "G" : "U";
+    badge.title       = cellData.isGiven ? "Click to mark as user entry" : "Click to mark as given";
+
+    badge.addEventListener("click", () => {
+      ocrReviewCells[i].isGiven = !ocrReviewCells[i].isGiven;
+      // Update the cell's appearance without rebuilding the whole board,
+      // so the user's focused input is not disrupted.
+      cell.classList.toggle("ocr-given", ocrReviewCells[i].isGiven);
+      cell.classList.toggle("ocr-user",  !ocrReviewCells[i].isGiven);
+      badge.textContent = ocrReviewCells[i].isGiven ? "G" : "U";
+      badge.title = ocrReviewCells[i].isGiven ? "Click to mark as user entry" : "Click to mark as given";
+    });
+
+    cell.appendChild(input);
+    cell.appendChild(badge);
+    ocrBoardEl.appendChild(cell);
+  }
+}
+
+/**
+ * Commit the OCR review cells to the main board state and close the modal.
+ * Cells marked isGiven=true with a non-zero digit form the givens string;
+ * all non-zero digits (regardless of type) form the current grid string.
+ */
+function confirmOcrLoad() {
+  const givens81  = ocrReviewCells.map(c => c.isGiven && c.digit > 0 ? String(c.digit) : "0").join("");
+  const current81 = ocrReviewCells.map(c => c.digit > 0 ? String(c.digit) : "0").join("");
 
   state.givens81  = givens81;
   state.current81 = current81;
@@ -787,7 +890,16 @@ function loadFromOCR(cells) {
     "Then click Analyze / Get Hint."
   );
   setStatus("OCR import complete.");
+  closeOcrModal();
 }
+
+// Close OCR modal via backdrop or × button.
+ocrModal.addEventListener("click", (e) => {
+  if (e.target?.dataset?.ocrClose === "1") closeOcrModal();
+});
+
+btnOcrCancel.addEventListener("click", closeOcrModal);
+btnOcrLoad.addEventListener("click", confirmOcrLoad);
 
 // Clicking the visible button triggers the hidden file input.
 btnOCR.addEventListener("click", () => ocrInput.click());
@@ -795,6 +907,9 @@ btnOCR.addEventListener("click", () => ocrInput.click());
 ocrInput.addEventListener("change", async () => {
   const file = ocrInput.files[0];
   if (!file) return;
+
+  // Create an object URL early — used for the image preview in the review modal.
+  const imageUrl = URL.createObjectURL(file);
 
   setStatus("Reading image…");
   const formData = new FormData();
@@ -804,12 +919,15 @@ ocrInput.addEventListener("change", async () => {
     const res  = await fetch(`${API_BASE}/ocr`, { method: "POST", body: formData });
     const data = await res.json();
     if (!res.ok || data.error) {
+      URL.revokeObjectURL(imageUrl);
       alert(data.error || "OCR failed.");
       setStatus("OCR failed.");
       return;
     }
-    loadFromOCR(data.board);
+    setStatus("OCR complete — review the board.");
+    openOcrModal(imageUrl, data.board);
   } catch (err) {
+    URL.revokeObjectURL(imageUrl);
     alert(err.message || String(err));
     setStatus("OCR failed.");
   } finally {
@@ -822,6 +940,10 @@ ocrInput.addEventListener("change", async () => {
 // prompted to load a puzzle without needing to find the Import button.
 (function init() {
   renderBoard();
+  setExplain(
+    "No board loaded",
+    "Import a puzzle using one of the buttons below.",
+    "You can type an 81-character string or import from a screenshot."
+  );
   setStatus("Import a grid to begin.");
-  openModal();
 })();

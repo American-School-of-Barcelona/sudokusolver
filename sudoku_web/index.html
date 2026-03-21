@@ -11,8 +11,7 @@
     <div class="outer-card">
       <div class="title">Sudoku Solver</div>
 
-      <div class="inner-panel">
-        <div class="content">
+      <div class="content">
           <div class="board-area">
             <div class="board-wrap">
               <div id="board" class="board" aria-label="Sudoku board"></div>
@@ -36,18 +35,48 @@
 
             <input type="file" id="ocrInput" accept="image/*" style="display:none" />
             <div class="buttons">
-              <button id="btnImport" class="btn btn-ghost">Import New Grid</button>
-              <button id="btnOCR" class="btn btn-ghost">Import from Screenshot</button>
+              <div class="btn-row">
+                <button id="btnImport" class="btn btn-ghost">Import from Text</button>
+                <button id="btnOCR" class="btn btn-ghost">Import from Screenshot</button>
+              </div>
               <button id="btnAnalyze" class="btn btn-primary">Analyze / Get Hint</button>
               <button id="btnReveal" class="btn btn-ghost">Reveal Solution</button>
             </div>
 
             <div class="status" id="status">Done.</div>
           </div>
-        </div>
       </div>
     </div>
   </main>
+
+  <!-- OCR review modal — shown after a screenshot is processed -->
+  <div id="ocrModal" class="modal" aria-hidden="true">
+    <div class="backdrop" data-ocr-close="1"></div>
+    <div class="modal-card ocr-modal-card" role="dialog" aria-modal="true" aria-label="Review OCR result">
+      <div class="modal-head">
+        <div class="modal-title">Review OCR Result</div>
+        <button class="xbtn" data-ocr-close="1" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="hint">
+          Edit any misread digits, then click the <span class="mono">G</span> badge in each cell's corner to toggle between a fixed given (dark) and a user entry (blue).
+        </div>
+        <div class="ocr-layout">
+          <div class="ocr-image-side">
+            <img id="ocrPreviewImg" class="ocr-preview-img" alt="Uploaded puzzle" />
+          </div>
+          <div class="ocr-board-side">
+            <div id="ocrBoard" class="ocr-board"></div>
+          </div>
+        </div>
+        <div class="row">
+          <button id="btnOcrCancel" class="btn btn-ghost small">Cancel</button>
+          <div class="spacer"></div>
+          <button id="btnOcrLoad" class="btn btn-primary small">Load Board</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div id="modal" class="modal" aria-hidden="true">
     <div class="backdrop" data-close="1"></div>
