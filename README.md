@@ -13,6 +13,37 @@
 
 ---
 
+## Directory Structure
+
+```
+sudokusolver/
+├── flask_api.py              # REST API entry point (run this to start the server)
+├── requirements.txt          # Python dependencies
+│
+├── sudoku_engine/            # Core puzzle logic (no Flask, no UI)
+│   ├── board.py              # Board representation and candidate tracking
+│   ├── solver.py             # Backtracking solver
+│   ├── hints.py              # Hint engine (Naked Single, Hidden Single)
+│   ├── reports.py            # Formats hint responses for the API
+│   └── models.py             # Shared data models / types
+│
+├── ocr/                      # OCR pipeline for importing puzzle photos
+│   ├── preprocess.py         # Initial image cleanup (contrast, resize)
+│   ├── grid_detector.py      # Finds and perspective-warps the sudoku grid
+│   ├── cell_extractor.py     # Splits the warped grid into 81 cell images
+│   ├── classifier.py         # Blank detection, given/user classification, digit recognition
+│   ├── train_classifier.py   # Trains the handwritten digit MLP (run once)
+│   ├── digit_model.pkl       # Trained MLP model (HOG + scikit-learn Pipeline)
+│   └── training_data/        # Handwritten digit samples (1–9 subfolders)
+│
+└── sudoku_web/               # Front-end (open index.html in a browser)
+    ├── index.html            # App shell and modals
+    ├── app.js                # All UI logic and API calls
+    └── styles.css            # Styling
+```
+
+---
+
 ## Table of Contents
 - [About The Project](#about-the-project)
   - [About the Client](#about-the-client-ia-a01-client-scenario)
