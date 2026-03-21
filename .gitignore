@@ -10,10 +10,8 @@ venv/
 .venv/
 env/
 
-# Trained model and training data (large binaries — kept locally only)
-# Regenerate model with: python -m ocr.train_classifier
-ocr/digit_model.pkl
-ocr/training_data/
+# Trained model (regenerate with: python -m ocr.train_classifier)
+# ocr/digit_model.pkl
 
 # macOS
 .DS_Store
