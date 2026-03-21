@@ -95,13 +95,12 @@ def main():
 
     # 4) HINT REPORT (optional)
     if args.hint:
-        hint = generate_hint(givens_board, user_board, mistake_report, reasons_map)
+        hint = generate_hint(user_board)
         print("HINT REPORT")
         print("-" * 60)
-        if hint.has_hint:
-            print(f"Technique: {hint.technique}")
-            print(f"Action: {hint.action}")
-            print(hint.message)
+        if hint.get("has_hint"):
+            print(f"Technique: {hint.get('technique')}")
+            print(hint.get("message", ""))
         else:
             print("No hint available.")
         print("-" * 60)

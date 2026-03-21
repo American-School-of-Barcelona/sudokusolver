@@ -4,7 +4,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 from sudoku_engine.board import Board
-from sudoku_engine.reports import generate_mistake_report
+from sudoku_engine.reports import generate_mistake_report, generate_violation_report
 from sudoku_engine.solver import solve_from_givens_only, solve_exact_from_givens
 from sudoku_engine.hints import generate_hint
 
@@ -12,54 +12,33 @@ app = Flask(__name__)
 CORS(app)
 
 
-def _norm81(s: str) -> str:
-    s = (s or "").replace(".", "0")
-    s = "".join(s.split())
-    if len(s) != 81:
-        raise ValueError(f"Expected 81 characters, got {len(s)}")
-    if any(ch not in "0123456789" for ch in s):
-        raise ValueError("Only digits, 0, '.' and whitespace are allowed")
-    return s
+def _norm81(raw: str) -> str:
+    """
+    Normalise a raw puzzle string to a clean 81-digit string.
+    Accepts '.' as a synonym for '0' (empty cell) and ignores whitespace.
+    Raises ValueError with a descriptive message on any malformed input.
+    """
+    cleaned = (raw or "").replace(".", "0")
+    cleaned = "".join(cleaned.split())     # strip all whitespace
+    if len(cleaned) != 81:
+        raise ValueError(f"Expected 81 characters, got {len(cleaned)}")
+    if any(ch not in "0123456789" for ch in cleaned):
+        raise ValueError("Only digits, '0', '.' and whitespace are allowed")
+    return cleaned
 
 
 def _grid_to_81(grid) -> str:
+    """
+    Flatten a 9×9 grid to an 81-character string, row by row left-to-right.
+    This is the compact Sudoku string representation used throughout the API
+    (9×9 = 81 cells, each encoded as a single digit character).
+    """
     return "".join(str(grid[r][c]) for r in range(9) for c in range(9))
 
 
-def _duplicate_violation(grid):
-    bad = []
-
-    def mark_group(cells):
-        seen = {}
-        for (r, c) in cells:
-            v = grid[r][c]
-            if v == 0:
-                continue
-            if v in seen:
-                pr, pc = seen[v]
-                bad.append({"r": pr + 1, "c": pc + 1, "digit": v})
-                bad.append({"r": r + 1, "c": c + 1, "digit": v})
-            else:
-                seen[v] = (r, c)
-
-    for r in range(9):
-        mark_group([(r, c) for c in range(9)])
-    for c in range(9):
-        mark_group([(r, c) for r in range(9)])
-    for br in range(0, 9, 3):
-        for bc in range(0, 9, 3):
-            mark_group([(r, c) for r in range(br, br + 3) for c in range(bc, bc + 3)])
-
-    if not bad:
-        return False, "", []
-
-    uniq = {(x["r"], x["c"]): x for x in bad}
-    explanation = (
-        "Sudoku rule violation: there are duplicate digits in a row, column, or 3×3 box. "
-        "Remove the duplicates before continuing."
-    )
-    return True, explanation, list(uniq.values())
-
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
 
 @app.get("/health")
 def health():
@@ -68,6 +47,7 @@ def health():
 
 @app.post("/ocr")
 def ocr():
+    """Receive an image file and return an 81-cell board via the OCR pipeline."""
     if "image" not in request.files:
         return jsonify({"error": "No image file provided."}), 400
     image_bytes = request.files["image"].read()
@@ -81,14 +61,28 @@ def ocr():
         gray_cells, color_cells = extract_cells(warped_gray, warped_color)
         board = classify_cells(gray_cells, color_cells)
         return jsonify({"board": board})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
+    except Exception as exc:
+        app.logger.exception("OCR pipeline error")
+        return jsonify({"error": str(exc)}), 400
 
 
 @app.post("/analyze")
 def analyze():
+    """
+    Core analysis endpoint.  Receives the puzzle givens and the player's
+    current grid, and returns validation results, a hint, and the solution.
+
+    Steps are ordered from cheapest/most critical to most expensive:
+      1. Given tampering   — cheapest; if a fixed clue was changed, nothing else matters.
+      2. Rule violations   — cheap;   if there's a duplicate, hints are meaningless.
+      3. Solve the puzzle  — moderate; needed for mistake-checking and hint generation.
+      4. Mistake report    — cheap once the solution is known.
+      5. Generate hint     — only reached when the board is correct so far.
+    """
     try:
         data = request.get_json(force=True) or {}
+        if not isinstance(data, dict):
+            return jsonify({"error": "Request body must be a JSON object."}), 400
 
         givens81 = _norm81(data.get("givens", ""))
         current_raw = data.get("current", None)
@@ -99,39 +93,50 @@ def analyze():
         )
 
         givens_board = Board.from_strings(givens81)
-        user_board = Board.from_strings(givens81, current81)
+        user_board   = Board.from_strings(givens81, current81)
 
-        # 1) Given tampering
-        tampered = [
-            {"r": r + 1, "c": c + 1,
-             "expected": givens_board.grid[r][c], "got": user_board.grid[r][c]}
-            for r in range(9) for c in range(9)
-            if givens_board.grid[r][c] != 0
-            and user_board.grid[r][c] != givens_board.grid[r][c]
-        ]
-        if tampered:
+        # Step 1 & 2: given tampering, then rule violations.
+        # generate_violation_report checks tampering first (structural integrity),
+        # then duplicates (rule correctness) — returning at the first problem found.
+        violation = generate_violation_report(givens_board, user_board)
+        if violation.has_violation and violation.violation_type == "GIVEN_TAMPERING":
+            tampered = [
+                {"r": r + 1, "c": c + 1,
+                 "expected": givens_board.grid[r][c],
+                 "got": user_board.grid[r][c]}
+                for (r, c) in (violation.conflict_cells or [])
+            ]
             return jsonify({
-                "validation": {"ok": False, "explanation": "Given tampering: a fixed clue was changed."},
+                "validation": {"ok": False, "explanation": violation.explanation},
                 "tampered": tampered, "duplicates": [],
                 "hint": {"has_hint": False, "technique": None, "message": ""},
                 "solver": {"ok": False, "solution81": None},
                 "mistakes": {"has_mistake": False, "items": []},
             })
 
-        # 2) Rule violation (duplicates)
-        has_v, expl, dup_cells = _duplicate_violation(user_board.grid)
-        if has_v:
+        if violation.has_violation:
+            # Rule violation — use get_all_conflict_cells so the UI can highlight
+            # every conflicting cell at once rather than just the first pair found.
+            all_conflicts = user_board.get_all_conflict_cells()
             return jsonify({
-                "validation": {"ok": False, "explanation": expl},
-                "tampered": [], "duplicates": dup_cells,
+                "validation": {"ok": False, "explanation": violation.explanation},
+                "tampered": [], "duplicates": all_conflicts,
                 "hint": {"has_hint": False, "technique": None, "message": ""},
                 "solver": {"ok": False, "solution81": None},
                 "mistakes": {"has_mistake": False, "items": []},
             })
 
-        # 3) Solve from givens; fall back to exact solver if human techniques get stuck
-        sol = solve_from_givens_only(givens_board)
-        solution_grid = sol.solution_grid if (sol.is_solvable and sol.solution_grid) else None
+        # Step 3: solve the puzzle.
+        # Human-technique solver is preferred because it mirrors how a person solves,
+        # producing a reasons map that powers meaningful mistake explanations.
+        # If it gets stuck (the puzzle requires harder techniques), fall back to exact
+        # backtracking, which can verify solvability and retrieve the unique solution.
+        solution_result = solve_from_givens_only(givens_board)
+        solution_grid = (
+            solution_result.solution_grid
+            if (solution_result.is_solvable and solution_result.solution_grid)
+            else None
+        )
 
         if solution_grid is None:
             solution_count, exact_grid = solve_exact_from_givens(givens_board, max_solutions=2)
@@ -154,7 +159,10 @@ def analyze():
                     "solver": {"ok": False, "solution81": None, "reason": "multiple_solutions"},
                     "ambiguity": {
                         "has_multiple_solutions": True,
-                        "explanation": "This puzzle has more than one valid solution, so no single forced hint exists.",
+                        "explanation": (
+                            "This puzzle has more than one valid solution, "
+                            "so no single forced hint exists."
+                        ),
                     },
                     "mistakes": {"has_mistake": False, "items": []},
                 })
@@ -163,7 +171,7 @@ def analyze():
 
         solution81 = _grid_to_81(solution_grid)
 
-        # 4) Mistake report
+        # Step 4: check for incorrect entries.
         mistakes = generate_mistake_report(user_board, solution_grid)
         if mistakes.has_mistake:
             return jsonify({
@@ -182,7 +190,7 @@ def analyze():
                 },
             })
 
-        # 5) Generate hint
+        # Step 5: generate a hint (only reached when the board has no mistakes).
         hint = generate_hint(user_board)
 
         return jsonify({
@@ -193,8 +201,9 @@ def analyze():
             "mistakes": {"has_mistake": False, "items": []},
         })
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
+    except Exception as exc:
+        app.logger.exception("Unhandled error in /analyze")
+        return jsonify({"error": str(exc)}), 400
 
 
 if __name__ == "__main__":
