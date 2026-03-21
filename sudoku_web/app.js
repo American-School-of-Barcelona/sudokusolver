@@ -28,6 +28,7 @@ const ocrPreviewImg = document.getElementById("ocrPreviewImg");
 const ocrBoardEl    = document.getElementById("ocrBoard");
 const btnOcrCancel  = document.getElementById("btnOcrCancel");
 const btnOcrLoad    = document.getElementById("btnOcrLoad");
+const ocrLoadingEl  = document.getElementById("ocrLoading");
 
 // ─── Application state ────────────────────────────────────────────────────────
 // All mutable UI state lives here in one object, making it easy to reset and
@@ -901,6 +902,18 @@ ocrModal.addEventListener("click", (e) => {
 btnOcrCancel.addEventListener("click", closeOcrModal);
 btnOcrLoad.addEventListener("click", confirmOcrLoad);
 
+function showOcrLoading() {
+  ocrLoadingEl.classList.add("show");
+  ocrLoadingEl.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+}
+
+function hideOcrLoading() {
+  ocrLoadingEl.classList.remove("show");
+  ocrLoadingEl.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("modal-open");
+}
+
 // Clicking the visible button triggers the hidden file input.
 btnOCR.addEventListener("click", () => ocrInput.click());
 
@@ -911,7 +924,7 @@ ocrInput.addEventListener("change", async () => {
   // Create an object URL early — used for the image preview in the review modal.
   const imageUrl = URL.createObjectURL(file);
 
-  setStatus("Reading image…");
+  showOcrLoading();
   const formData = new FormData();
   formData.append("image", file);
 
@@ -931,6 +944,7 @@ ocrInput.addEventListener("change", async () => {
     alert(err.message || String(err));
     setStatus("OCR failed.");
   } finally {
+    hideOcrLoading();
     ocrInput.value = "";  // reset so the same file can be selected again
   }
 });

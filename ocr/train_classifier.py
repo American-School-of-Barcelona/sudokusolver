@@ -26,90 +26,92 @@ TRAINING_DIR  = _HERE / "training_data"
 MODEL_PATH    = _HERE / "digit_model.pkl"
 
 # ── Preprocessing ─────────────────────────────────────────────────────────────
-# 28×28 matches the standard MNIST size; keeps the feature vector short (784
-# floats) and training fast while retaining enough detail for digit recognition.
 IMG_SIZE = 28
 
+# HOG descriptor — must match classifier.py exactly.
+# 28×28 window, 14×14 blocks, 7px stride, 7×7 cells, 9 orientation bins → 324 features.
+_HOG_DESC = cv2.HOGDescriptor(
+    _winSize=(IMG_SIZE, IMG_SIZE),
+    _blockSize=(14, 14),
+    _blockStride=(7, 7),
+    _cellSize=(7, 7),
+    _nbins=9,
+)
+
 # Number of random augmented copies generated per original sample.
-# 509 samples × 7 augmentations = ~3563 extra examples, bringing the effective
-# training set to ~4072 total.  More variety helps the model handle slight
-# differences in how the client writes on a given day.
 N_AUGMENTS = 7
 
 
-def _preprocess(img_path: pathlib.Path) -> np.ndarray:
+def _to_binary(img: np.ndarray) -> np.ndarray:
     """
-    Load one sample image and convert it to a flat, normalised feature vector.
+    Grayscale image → clean 28×28 binary image (digit=white, bg=black).
 
-    Steps:
-      1. Read as grayscale — colour is irrelevant for digit identity.
-      2. Binarise with Otsu's threshold so brightness differences don't affect
-         features.  The image is inverted so digit pixels are white (foreground).
-      3. Crop tightly to the digit's bounding box so position in the photo is
-         invariant — a "1" centred vs. off-centre must look the same to the model.
-      4. Resize to IMG_SIZE × IMG_SIZE.
-      5. Flatten and normalise to [0, 1] for the MLP's gradient descent.
+    Must stay in exact sync with _to_binary in classifier.py.
+    Pipeline: CLAHE → fixed threshold (180) → dilate → keep largest connected
+              component → bounding-box crop → resize to 28×28.
     """
-    img = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
-    if img is None:
-        raise FileNotFoundError(f"Cannot read image: {img_path}")
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(4, 4))
+    img = clahe.apply(img)
+    _, binary = cv2.threshold(img, 180, 255, cv2.THRESH_BINARY_INV)
 
-    # Binarise: digit pixels become 255, background becomes 0.
-    _, binary = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    kernel = np.ones((2, 2), np.uint8)
+    binary = cv2.dilate(binary, kernel, iterations=1)
 
-    # Crop to bounding box of the digit content, with a small proportional pad.
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary)
+    if num_labels > 1:
+        largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+        clean = np.zeros_like(binary)
+        clean[labels == largest] = 255
+        binary = clean
+
     coords = cv2.findNonZero(binary)
     if coords is not None:
         x, y, w, h = cv2.boundingRect(coords)
-        pad = max(w, h) // 6          # ~17% border keeps the digit from touching edges
+        pad = max(w, h) // 6
         x1 = max(0, x - pad)
         y1 = max(0, y - pad)
         x2 = min(binary.shape[1], x + w + pad)
         y2 = min(binary.shape[0], y + h + pad)
         binary = binary[y1:y2, x1:x2]
 
-    binary = cv2.resize(binary, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_AREA)
-    return binary.flatten().astype(np.float32) / 255.0
+    return cv2.resize(binary, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_AREA)
 
 
-def _augment(flat: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+def _hog(binary: np.ndarray) -> np.ndarray:
+    """28×28 binary image → HOG feature vector (324 floats)."""
+    return _HOG_DESC.compute(binary).flatten().astype(np.float32)
+
+
+def _augment(binary: np.ndarray, rng: np.random.Generator) -> np.ndarray:
     """
-    Apply one random geometric transformation to a preprocessed image vector.
+    Apply one random geometric transformation to a 28×28 binary image.
 
-    Transformations applied (all chosen randomly within realistic bounds):
-      - Rotation    : ±15° — handwritten digits are naturally slightly tilted
-      - Scale       : 88–112% — the client may write larger or smaller
-      - Translation : ±2 px — slight shifts in pen-lift position
+    Augments in image space (before HOG extraction) so the HOG features reflect
+    genuinely varied digit shapes rather than artifacts of the augmentation.
 
-    The digit pixels are white (1.0) on a black background (0.0), so the
-    border fill for areas exposed by the warp is 0 (black = background).
-    Returns a new flat float32 vector of the same length.
+    Transformations:
+      - Rotation    : ±15°
+      - Scale       : 88–112%
+      - Translation : ±2 px
     """
-    img = (flat.reshape(IMG_SIZE, IMG_SIZE) * 255).astype(np.uint8)
     cx, cy = IMG_SIZE / 2, IMG_SIZE / 2
-
     angle = rng.uniform(-15.0, 15.0)
     scale = rng.uniform(0.88, 1.12)
     tx    = rng.uniform(-2.0, 2.0)
     ty    = rng.uniform(-2.0, 2.0)
-
-    # Build a combined rotation + scale + translation matrix.
     M = cv2.getRotationMatrix2D((cx, cy), angle, scale)
     M[0, 2] += tx
     M[1, 2] += ty
-
-    warped = cv2.warpAffine(img, M, (IMG_SIZE, IMG_SIZE), borderValue=0)
-    return warped.flatten().astype(np.float32) / 255.0
+    return cv2.warpAffine(binary, M, (IMG_SIZE, IMG_SIZE), borderValue=0)
 
 
-def load_dataset() -> tuple[np.ndarray, np.ndarray]:
+def load_dataset() -> tuple[list[np.ndarray], np.ndarray]:
     """
-    Walk training_data/{1..9}/ and build X (features) and y (labels) arrays.
-    Each row of X is the preprocessed feature vector for one image.
-    Labels are the digit values 1–9.
+    Walk training_data/{1..9}/ and return (binary_images, labels).
+    Each element of binary_images is a preprocessed 28×28 uint8 array.
     """
-    X: list[np.ndarray] = []
-    y: list[int]        = []
+    X_binary: list[np.ndarray] = []
+    y: list[int]               = []
 
     for label in range(1, 10):
         folder = TRAINING_DIR / str(label)
@@ -120,45 +122,49 @@ def load_dataset() -> tuple[np.ndarray, np.ndarray]:
         images = sorted(folder.glob("*.png")) + sorted(folder.glob("*.jpg"))
         for img_path in images:
             try:
-                X.append(_preprocess(img_path))
+                img = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
+                if img is None:
+                    raise FileNotFoundError(f"Cannot read: {img_path}")
+                X_binary.append(_to_binary(img))
                 y.append(label)
             except Exception as exc:
                 print(f"  [warn] skipping {img_path.name}: {exc}", file=sys.stderr)
 
-    return np.array(X), np.array(y)
+    return X_binary, np.array(y)
 
 
-def augment_dataset(X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def augment_dataset(
+    X_binary: list[np.ndarray],
+    y: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
     """
-    Expand the dataset by adding N_AUGMENTS randomly-transformed copies of each
-    original sample.
+    Augment binary images, then extract HOG features from all of them.
 
-    Why augment only for the final training run (not during cross-validation)?
-    Cross-validation splits the original samples into folds to give an honest
-    accuracy estimate on unseen data.  Augmenting before the split would let
-    near-identical copies of a test sample appear in training, inflating the
-    score.  Instead, CV runs on the original data (honest estimate) and the
-    final saved model trains on original + augmented data (maximum capacity).
+    Augmentation happens in image space so HOG features are computed on the
+    varied shapes — correctly reflects what real geometric variation looks like
+    to the model.
+
+    Returns (X_hog, y_all) ready to pass to the classifier.
     """
     rng = np.random.default_rng(seed=42)
-    X_aug = [_augment(x, rng) for x in X for _ in range(N_AUGMENTS)]
-    y_aug = [label for label in y for _ in range(N_AUGMENTS)]
-    X_all = np.vstack([X, np.array(X_aug)])
-    y_all = np.concatenate([y, np.array(y_aug)])
-    return X_all, y_all
+
+    all_binary = list(X_binary)
+    all_labels = list(y)
+    for img, label in zip(X_binary, y):
+        for _ in range(N_AUGMENTS):
+            all_binary.append(_augment(img, rng))
+            all_labels.append(label)
+
+    X_hog = np.array([_hog(b) for b in all_binary])
+    return X_hog, np.array(all_labels)
 
 
 def _build_model() -> Pipeline:
     """
-    Build a Pipeline that standardises features then trains an MLP.
+    Build a Pipeline: StandardScaler → MLPClassifier.
 
-    StandardScaler (zero mean, unit variance) is applied first because raw
-    pixel intensities have unequal variance across positions, which slows
-    gradient descent and can prevent convergence.
-
-    The large hidden layers (256 → 128) are intentionally oversized so the
-    model fully memorises this specific client's handwriting style.
-    Generalisation to other people's writing is not a goal.
+    Trained on HOG features (324-dim).  Hidden layers are deliberately large
+    so the model fully memorises this specific client's handwriting.
     """
     return Pipeline([
         ("scaler", StandardScaler()),
@@ -173,16 +179,17 @@ def _build_model() -> Pipeline:
 
 def train() -> None:
     print("Loading training data…")
-    X, y = load_dataset()
-    print(f"  {len(X)} original samples | {len(set(y))} classes")
+    X_binary, y = load_dataset()
+    print(f"  {len(X_binary)} original samples | {len(set(y))} classes")
 
-    # CV on original (un-augmented) data gives an honest accuracy estimate.
+    # CV on HOG features from original (un-augmented) data — honest accuracy estimate.
     print("Running cross-validation on original data…")
-    scores = cross_val_score(_build_model(), X, y, cv=5, scoring="accuracy")
+    X_hog_orig = np.array([_hog(b) for b in X_binary])
+    scores = cross_val_score(_build_model(), X_hog_orig, y, cv=5, scoring="accuracy")
     print(f"  5-fold CV accuracy : {scores.mean():.1%} ± {scores.std():.1%}")
 
-    # Augment and train the final model on all available data.
-    X_all, y_all = augment_dataset(X, y)
+    # Augment in image space, extract HOG, train the final model.
+    X_all, y_all = augment_dataset(X_binary, y)
     print(f"  Augmented to {len(X_all)} samples ({N_AUGMENTS}× per original)")
 
     final_model = _build_model()

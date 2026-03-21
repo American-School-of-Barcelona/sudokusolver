@@ -9,22 +9,23 @@ import numpy as np
 import pytesseract
 
 # ── Thresholds ────────────────────────────────────────────────────────────────
-# A cell is blank if it has fewer than this many dark pixels.
-# Counting dark pixels directly is more reliable than a white-pixel ratio:
-# blank cells have near-zero dark pixels, while even the thinnest digit (1, 7)
-# produces hundreds of dark pixels at 60×60 resolution.
-BLANK_DARK_PIXEL_THRESHOLD = 60
+# Blank detection: any pixel below this level is considered non-background ink.
+# Must be high enough to catch both:
+#   - Pure black printed digits  (grayscale ≈ 0–50)
+#   - Blue handwritten digits    (grayscale ≈ 80–150 after BGR→gray conversion)
+# White background is ≈240–255, so 180 gives a clear gap above any ink.
+NONWHITE_LEVEL = 180
 
-# Pixels darker than this are considered ink (digit strokes).
-# 85 works well for clean black-on-white prints; anything above the digit
-# but below background (~240) is treated as background.
+# A cell is blank if it has fewer than this many sub-NONWHITE_LEVEL pixels
+# (measured after CLAHE enhancement).
+# 80 gives a wide margin: real digits have 200–600 dark pixels in a 60×60 cell;
+# shadow/noise in genuinely blank cells rarely exceeds 80.
+BLANK_PIXEL_THRESHOLD = 80
+
+# Pixels darker than this are considered pure black ink (printed givens).
+# Used only in _is_given to distinguish printing-press black from other ink.
 INK_THRESHOLD = 85
 
-# Blue HSV pixels found → digit was typed in blue (user entry in digital apps).
-BLUE_PIXEL_THRESHOLD = 8
-
-# Stroke-width coefficient of variation above this → handwritten (user entry).
-HANDWRITTEN_CV_THRESHOLD = 0.45
 
 _TESS_CONFIG = "--psm 10 --oem 3 -c tessedit_char_whitelist=123456789"
 
@@ -32,6 +33,16 @@ _TESS_CONFIG = "--psm 10 --oem 3 -c tessedit_char_whitelist=123456789"
 # Must match the value used in train_classifier.py.
 _IMG_SIZE   = 28
 _MODEL_PATH = pathlib.Path(__file__).parent / "digit_model.pkl"
+
+# HOG descriptor — must match train_classifier.py exactly.
+# 28×28 window, 14×14 blocks, 7px stride, 7×7 cells, 9 orientation bins → 324 features.
+_HOG_DESC = cv2.HOGDescriptor(
+    _winSize=(_IMG_SIZE, _IMG_SIZE),
+    _blockSize=(14, 14),
+    _blockStride=(7, 7),
+    _cellSize=(7, 7),
+    _nbins=9,
+)
 
 
 def _load_model():
@@ -51,24 +62,41 @@ def _is_blank(gray_cell: np.ndarray) -> bool:
     """
     True if the cell contains no digit.
 
-    Counts pixels that are unambiguously dark ink rather than measuring how
-    much of the cell is white.  Blank cells have virtually zero dark pixels;
-    even the thinnest printed digit (1, 7) has several hundred.
+    Applies CLAHE first so shadow noise in blank cells is suppressed and the
+    threshold of NONWHITE_LEVEL (180) reliably separates ink from background.
     """
-    return int(np.sum(gray_cell < INK_THRESHOLD)) < BLANK_DARK_PIXEL_THRESHOLD
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(4, 4))
+    enhanced = clahe.apply(gray_cell)
+    return int(np.sum(enhanced < NONWHITE_LEVEL)) < BLANK_PIXEL_THRESHOLD
 
 
-def _preprocess_for_model(gray_cell: np.ndarray) -> np.ndarray:
+def _to_binary(gray_cell: np.ndarray) -> np.ndarray:
     """
-    Apply the same preprocessing used at training time so inference features
-    match what the model was trained on.
+    Full preprocessing pipeline → clean 28×28 binary image (digit=white, bg=black).
 
-    Returns a flat float32 vector of length _IMG_SIZE².
+    Pipeline: CLAHE → fixed threshold → dilate → keep largest connected component
+              → bounding-box crop → resize to 28×28.
+
+    Must stay in exact sync with _to_binary in train_classifier.py.
     """
-    # Binarise and invert: digit becomes white, background becomes black.
-    _, binary = cv2.threshold(gray_cell, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(4, 4))
+    enhanced = clahe.apply(gray_cell)
 
-    # Crop tightly to the digit bounding box — same as the training pipeline.
+    _, binary = cv2.threshold(enhanced, NONWHITE_LEVEL, 255, cv2.THRESH_BINARY_INV)
+
+    kernel = np.ones((2, 2), np.uint8)
+    binary = cv2.dilate(binary, kernel, iterations=1)
+
+    # Keep only the largest connected component — eliminates shadow noise and
+    # grid-line residue that confuse the feature extraction.
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary)
+    if num_labels > 1:
+        largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+        clean = np.zeros_like(binary)
+        clean[labels == largest] = 255
+        binary = clean
+
+    # Crop tightly so position within the cell is irrelevant.
     coords = cv2.findNonZero(binary)
     if coords is not None:
         x, y, w, h = cv2.boundingRect(coords)
@@ -79,22 +107,74 @@ def _preprocess_for_model(gray_cell: np.ndarray) -> np.ndarray:
         y2 = min(binary.shape[0], y + h + pad)
         binary = binary[y1:y2, x1:x2]
 
-    binary = cv2.resize(binary, (_IMG_SIZE, _IMG_SIZE), interpolation=cv2.INTER_AREA)
-    return binary.flatten().astype(np.float32) / 255.0
+    return cv2.resize(binary, (_IMG_SIZE, _IMG_SIZE), interpolation=cv2.INTER_AREA)
+
+
+def _preprocess_for_model(gray_cell: np.ndarray) -> np.ndarray:
+    """
+    Convert a grayscale cell to the HOG feature vector the MLP expects.
+
+    HOG (Histogram of Oriented Gradients) captures digit shape via local gradient
+    directions rather than raw pixel values, making it robust to lighting variation,
+    slight positional shifts, and pen-pressure differences.
+    """
+    binary = _to_binary(gray_cell)
+    return _HOG_DESC.compute(binary).flatten().astype(np.float32)
+
+
+_TTA_RNG = np.random.default_rng(seed=0)  # fixed seed → reproducible across calls
+
+
+def _augment_cell(gray_cell: np.ndarray) -> np.ndarray:
+    """One random geometric perturbation of a raw grayscale cell for TTA."""
+    cx, cy = gray_cell.shape[1] / 2, gray_cell.shape[0] / 2
+    angle = float(_TTA_RNG.uniform(-10.0, 10.0))
+    scale = float(_TTA_RNG.uniform(0.90, 1.10))
+    tx    = float(_TTA_RNG.uniform(-3.0, 3.0))
+    ty    = float(_TTA_RNG.uniform(-3.0, 3.0))
+    M = cv2.getRotationMatrix2D((cx, cy), angle, scale)
+    M[0, 2] += tx
+    M[1, 2] += ty
+    return cv2.warpAffine(
+        gray_cell, M, (gray_cell.shape[1], gray_cell.shape[0]),
+        borderValue=255,  # white background fill
+    )
 
 
 def _predict_digit_model(gray_cell: np.ndarray) -> int:
     """
-    Use the trained MLP to recognise a handwritten digit.
-    Returns 1–9, or 0 if the model has not been trained yet.
+    MLP with 7-way test-time augmentation (TTA) and low-confidence fallback.
 
-    This is used for user-entry (handwritten) cells because Tesseract is
-    trained on printed text and performs poorly on handwriting.
+    Runs the original cell plus 6 randomly-perturbed versions through the MLP
+    and takes the majority vote.  This handles off-centre digits, size variation,
+    and lighting asymmetry without any model change.
+
+    If fewer than 4 of 7 votes agree AND predict_proba max < 0.55, the model is
+    genuinely uncertain — Tesseract is tried as a second opinion.
     """
     if _MODEL is None:
         return 0
-    features = _preprocess_for_model(gray_cell).reshape(1, -1)
-    return int(_MODEL.predict(features)[0])
+
+    N_TTA = 7
+    cells = [gray_cell] + [_augment_cell(gray_cell) for _ in range(N_TTA - 1)]
+    votes: Dict[int, int] = {}
+    for cell in cells:
+        pred = int(_MODEL.predict(_preprocess_for_model(cell).reshape(1, -1))[0])
+        votes[pred] = votes.get(pred, 0) + 1
+
+    winner    = max(votes, key=lambda k: votes[k])
+    top_count = votes[winner]
+
+    if top_count <= 3:
+        proba = _MODEL.predict_proba(
+            _preprocess_for_model(gray_cell).reshape(1, -1)
+        )[0]
+        if float(proba.max()) < 0.55:
+            tess = _predict_digit_tesseract(gray_cell)
+            if tess > 0:
+                return tess
+
+    return winner
 
 
 def _predict_digit_tesseract(gray_cell: np.ndarray) -> int:
@@ -119,65 +199,36 @@ def _predict_digit_tesseract(gray_cell: np.ndarray) -> int:
     return int(text[0]) if text and text[0] in "123456789" else 0
 
 
-def _stroke_width_cv(gray_cell: np.ndarray) -> float:
-    """
-    Coefficient of variation of stroke widths using the distance transform.
-
-    How it works:
-      - Binarise and invert so digit pixels are white.
-      - The distance transform assigns each foreground pixel its distance to
-        the nearest background pixel — i.e. the local half-width of the stroke.
-      - CV = std / mean over all foreground pixels.
-
-    Printed / computer-rendered digits have very uniform stroke widths → low CV.
-    Handwritten digits have variable stroke widths → high CV.
-    """
-    _, binary = cv2.threshold(gray_cell, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    if binary.sum() == 0:
-        return 0.0
-    dist      = cv2.distanceTransform(binary, cv2.DIST_L2, 3)
-    fg_widths = dist[binary > 0]
-    if len(fg_widths) < 5:
-        return 0.0
-    return float(fg_widths.std() / (fg_widths.mean() + 1e-6))
-
 
 def _is_given(color_cell: np.ndarray, gray_cell: np.ndarray) -> bool:
     """
     Decide whether a digit is a puzzle given (printed/typed) or a user entry.
 
-    Three-stage check in order of reliability:
-
-    1. Blue pixels → user entry typed in blue (digital Sudoku apps).
-
-    2. Ink brightness → the most reliable signal for physical puzzles.
-       Printed Sudoku ink is literally pure black (HSV value ≈ 0–50).
-       Handwritten pencil strokes are noticeably brighter (value ≈ 100–200).
-       This is more robust than stroke-width CV, which breaks down on bold
-       printed fonts because their thick strokes have naturally high variance.
-
-    3. Stroke-width CV → fallback for edge cases (e.g. very light printing).
+    The key insight: printing-press black ink is simultaneously very dark
+    (HSV value ≈ 0–60) AND achromatic (HSV saturation ≈ 0–30).
+    Handwritten digits — even dark navy or dark blue ones — always have
+    notable saturation or are noticeably brighter than print.
+    We measure both channels on the ink pixels and require BOTH conditions
+    to declare a given; anything that fails either check is a user entry.
     """
     hsv = cv2.cvtColor(color_cell, cv2.COLOR_BGR2HSV)
 
-    # Stage 1: blue ink → user.
-    blue_mask = cv2.inRange(hsv, np.array([100, 50, 50]), np.array([130, 255, 255]))
-    if int(np.count_nonzero(blue_mask)) >= BLUE_PIXEL_THRESHOLD:
-        return False
-
-    # Stage 2: ink darkness check.
-    # Take only pixels that are clearly ink (dark in grayscale), then inspect
-    # their HSV brightness.  Printed black ink stays very dark (V < 60) even
-    # after perspective-warp interpolation; handwritten strokes are brighter.
-    ink_mask = gray_cell < INK_THRESHOLD
+    # Identify ink pixels as anything noticeably non-white.
+    ink_mask = gray_cell < NONWHITE_LEVEL
     n_ink = int(np.count_nonzero(ink_mask))
-    if n_ink > 20:
-        ink_brightness = hsv[:, :, 2][ink_mask]   # V channel of ink pixels only
-        if float(np.percentile(ink_brightness, 25)) < 60:
-            return True   # very dark ink → printed given
+    if n_ink < 10:
+        return False   # almost no ink — shouldn't happen after blank check
 
-    # Stage 3: stroke-width CV fallback.
-    return _stroke_width_cv(gray_cell) < HANDWRITTEN_CV_THRESHOLD
+    ink_sat = hsv[:, :, 1][ink_mask]   # S channel: 0 = grey/black, 255 = vivid colour
+    ink_val = hsv[:, :, 2][ink_mask]   # V channel: 0 = black, 255 = bright
+
+    median_sat = float(np.median(ink_sat))
+    median_val = float(np.median(ink_val))
+
+    # Printed black: dark (V < 80) AND achromatic (S < 40).
+    # Handwritten ink fails at least one: it's either coloured (S ≥ 40) or
+    # brighter than pure print (V ≥ 80), even for dark navy or grey pencil.
+    return median_val < 80 and median_sat < 40
 
 
 def classify_cells(
